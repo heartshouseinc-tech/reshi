@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>レシート解析・税務仕訳</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:#F0F4FA;min-height:100vh;}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+/* ヘッダー */
+.hd{background:#fff;border-bottom:2px solid #E0E8F4;padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.hd-logo{width:38px;height:38px;background:linear-gradient(135deg,#1A6FD4,#0F4FA0);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.hd-title{font-size:17px;font-weight:800;color:#1A3A6B;}
+.hd-sub{font-size:10px;color:#8896A8;margin-top:1px;}
+
+.wrap{padding:14px;max-width:520px;margin:0 auto;}
+
+/* カード */
+.card{background:#fff;border-radius:14px;padding:16px;margin-bottom:14px;border:1px solid #E0E8F4;box-shadow:0 1px 4px rgba(0,0,0,.05);}
+.card-hd{font-size:13px;font-weight:700;color:#1A3A6B;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.card-hd::before{content:'';width:3px;height:14px;background:#1A6FD4;border-radius:2px;display:block;flex-shrink:0;}
+
+/* 撮影ゾーン */
+.zone{border:2.5px dashed #C8D8F0;border-radius:14px;padding:36px 20px;text-align:center;cursor:pointer;background:#F8FAFF;transition:all .2s;margin-bottom:14px;}
+.zone:hover,.zone.on{border-color:#1A6FD4;background:#EEF4FF;}
+.zone-ic{font-size:52px;margin-bottom:10px;}
+.zone-txt{font-size:14px;color:#4A5568;line-height:1.8;}
+.zone-txt b{color:#1A6FD4;}
+.zone-hint{font-size:11px;color:#A0AEC0;margin-top:6px;}
+
+/* プレビュー */
+.preview{display:none;border-radius:12px;overflow:hidden;margin-bottom:14px;position:relative;border:1px solid #E0E8F4;}
+.preview img{width:100%;max-height:300px;object-fit:contain;display:block;background:#111;}
+.overlay{display:none;position:absolute;inset:0;background:rgba(5,15,35,.82);flex-direction:column;align-items:center;justify-content:center;gap:14px;}
+.spin{width:46px;height:46px;border:4px solid rgba(100,220,160,.2);border-top-color:#64DCA0;border-radius:50%;animation:spin .75s linear infinite;}
+.overlay-txt{color:#64DCA0;font-size:14px;font-weight:700;text-align:center;}
+
+/* 結果 */
+.result{display:none;border-radius:14px;padding:16px;margin-bottom:14px;border:2.5px solid #12A05A;background:#fff;}
+.result.show{display:block;}
+.result.warn{border-color:#E07020;}
+.result-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.badge{font-size:11px;font-weight:700;padding:4px 11px;border-radius:10px;background:#12A05A;color:#fff;}
+.badge.warn{background:#E07020;}
+.conf{font-size:11px;color:#8896A8;}
+.conf b{font-weight:700;}
+
+.grid{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:start;}
+.lbl{font-size:11px;color:#8896A8;padding-top:2px;white-space:nowrap;}
+.val{font-size:13px;font-weight:600;color:#1A202C;}
+.val.amt{font-size:22px;font-weight:800;color:#1A6FD4;}
+.val.amt.ng{color:#E07020;}
+.val.tag{display:inline-block;background:#EEF4FF;color:#1A6FD4;padding:2px 10px;border-radius:8px;font-size:12px;}
+.val.text{font-size:12px;line-height:1.6;color:#4A5568;white-space:pre-wrap;}
+
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+.btn{padding:13px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn.save{background:linear-gradient(135deg,#12A05A,#0a6038);color:#fff;}
+.btn.retry{background:#fff;color:#1A6FD4;border:2px solid #1A6FD4;}
+
+/* 手動入力 */
+.frow{margin-bottom:10px;}
+.flbl{font-size:11px;font-weight:700;color:#6B7A8D;margin-bottom:4px;}
+.inp{width:100%;padding:10px 12px;border:1.5px solid #D6E0F0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;}
+.inp:focus{border-color:#1A6FD4;}
+.btn-full{width:100%;padding:12px;background:linear-gradient(135deg,#1A6FD4,#0F4FA0);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:4px;}
+
+/* 集計 */
+.totals{display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.total{background:#fff;border:1px solid #E0E8F4;border-radius:12px;padding:12px;text-align:center;}
+.total-lbl{font-size:11px;color:#8896A8;margin-bottom:4px;}
+.total-amt{font-size:20px;font-weight:800;}
+.total-amt.inc{color:#12A05A;}
+.total-amt.exp{color:#D32F2F;}
+
+/* リスト */
+.item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #F4F6FA;}
+.item:last-child{border-bottom:none;}
+.ic{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.ic.e{background:rgba(211,47,47,.1);}
+.ic.i{background:rgba(18,160,90,.1);}
+.info{flex:1;min-width:0;}
+.name{font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.meta{font-size:10px;color:#8896A8;margin-top:1px;}
+.amt{font-size:14px;font-weight:800;flex-shrink:0;}
+.amt.e{color:#D32F2F;}
+.amt.i{color:#12A05A;}
+.del-btn{background:none;border:none;color:#CBD5E0;cursor:pointer;font-size:16px;padding:4px;flex-shrink:0;}
+.empty{text-align:center;padding:20px;color:#A0AEC0;font-size:13px;}
+
+.bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.mini-btn{padding:10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.mini-btn.csv{background:#EEF4FF;color:#1A6FD4;border:1.5px solid #1A6FD4;}
+.mini-btn.clr{background:#FFF0F0;color:#D32F2F;border:1.5px solid rgba(211,47,47,.3);}
+
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:20px;font-size:13px;font-weight:700;color:#fff;z-index:9999;white-space:nowrap;animation:fadeUp .3s ease;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.18);}
+</style>
+</head>
+<body>
+
+<div class="hd">
+  <div class="hd-logo">🧾</div>
+  <div>
+    <div class="hd-title">レシート解析・税務仕訳</div>
+    <div class="hd-sub">Gemini 2.5 Flash Vision × Firebase</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- 撮影ゾーン -->
+  <div class="zone" id="zone"
+    onclick="document.getElementById('fin').click()"
+    ondragover="event.preventDefault();this.classList.add('on')"
+    ondragleave="this.classList.remove('on')"
+    ondrop="this.classList.remove('on');onDrop(event)">
+    <div class="zone-ic">📷</div>
+    <div class="zone-txt"><b>タップして撮影 または 画像を選択</b><br>ドラッグ＆ドロップも対応</div>
+    <div class="zone-hint">JPG・PNG・HEIC対応</div>
+  </div>
+  <input type="file" id="fin" accept="image/*" capture="environment" style="display:none" onchange="onPick(event)">
+
+  <!-- プレビュー＋スキャンオーバーレイ -->
+  <div class="preview" id="preview">
+    <img id="preview-img" src="">
+    <div class="overlay" id="overlay">
+      <div class="spin"></div>
+      <div class="overlay-txt" id="overlay-txt">Gemini 2.5 Flash<br>解析中...</div>
+    </div>
+  </div>
+
+  <!-- AI解析結果 -->
+  <div class="result" id="result">
+    <div class="result-top">
+      <span class="badge" id="badge">✓ AI解析完了</span>
+      <span class="conf">信頼度: <b id="conf">--</b></span>
+    </div>
+    <div class="grid" id="result-grid"></div>
+    <div class="row2">
+      <button class="btn save" onclick="doSave()">✅ 仕訳に保存</button>
+      <button class="btn retry" onclick="doReset()">🔄 再撮影</button>
+    </div>
+  </div>
+
+  <!-- 手動入力 -->
+  <div class="card">
+    <div class="card-hd">✏️ 手動入力</div>
+    <div class="frow"><div class="flbl">日付</div><input type="date" class="inp" id="m-date"></div>
+    <div class="frow"><div class="flbl">店舗・取引先</div><input type="text" class="inp" id="m-name" placeholder="例）コーナン 〇〇店"></div>
+    <div class="frow"><div class="flbl">金額（税込）</div><input type="number" class="inp" id="m-amount" placeholder="3605"></div>
+    <div class="frow"><div class="flbl">勘定科目</div>
+      <select class="inp" id="m-cat">
+        <option value="">選択</option>
+        <optgroup label="収益"><option>売上高</option><option>受取利息</option></optgroup>
+        <optgroup label="費用">
+          <option>消耗品費</option><option>修繕費</option><option>旅費交通費</option>
+          <option>交際費</option><option>通信費</option><option>地代家賃</option>
+          <option>水道光熱費</option><option>広告宣伝費</option><option>外注費</option>
+          <option>給料手当</option><option>雑費</option>
+        </optgroup>
+      </select>
+    </div>
+    <button class="btn-full" onclick="doManual()">💾 手動で保存</button>
+  </div>
+
+  <!-- 集計 -->
+  <div class="totals" id="totals">
+    <div class="total"><div class="total-lbl">収益合計</div><div class="total-amt inc" id="t-inc">¥0</div></div>
+    <div class="total"><div class="total-lbl">経費合計</div><div class="total-amt exp" id="t-exp">¥0</div></div>
+  </div>
+
+  <!-- 保存済みリスト -->
+  <div class="card">
+    <div class="card-hd">📒 保存済み仕訳</div>
+    <div id="list"></div>
+    <div class="bottom-row">
+      <button class="mini-btn csv" onclick="doCSV()">📥 CSV出力</button>
+      <button class="mini-btn clr" onclick="doClear()">🗑️ 全削除</button>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+var EP  = 'https://us-central1-kensetsu-nippo-842a2.cloudfunctions.net/askClaude';
+var KEY = 'HH-2026-kensetsu-daiku';
+var entries = JSON.parse(localStorage.getItem('rs2_entries') || '[]');
+var cur = null; // { dataUrl, parsed }
+
+// 起動
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('m-date').value = toDay();
+  draw();
+});
+
+function toDay(){ return new Date().toISOString().split('T')[0]; }
+
+// ─── ファイル受付 ───
+function onDrop(e){
+  e.preventDefault();
+  var f = e.dataTransfer.files[0];
+  if(f) go(f);
+}
+function onPick(e){
+  var f = e.target.files[0];
+  if(f) go(f);
+}
+function go(file){
+  var r = new FileReader();
+  r.onload = function(e){
+    var url = e.target.result;
+    document.getElementById('preview').style.display = 'block';
+    document.getElementById('preview-img').src = url;
+    document.getElementById('result').className = 'result';
+    cur = { dataUrl: url };
+    gemini(url);
+  };
+  r.readAsDataURL(file);
+}
+
+// ─── Gemini 2.5 Flash Vision 呼び出し ───
+// Functions(788.jpg)の仕様:
+//   req.body: { prompt, model, mediaContents, useSearch }
+//   mediaContents: [{ type:"image/jpeg", base64:"data:image/jpeg;base64,..." }]
+//   → Functions内で f.base64.replace(/^data:[^;]+;base64,/,"") して純粋base64に変換
+//   → inlineData: { mimeType, data: base64 } でGeminiへ
+async function gemini(dataUrl){
+  var ov = document.getElementById('overlay');
+  ov.style.display = 'flex';
+
+  var mime = dataUrl.split(';')[0].split(':')[1];
+
+  var prompt =
+    'このレシート・領収書の画像を解析して、以下のJSON形式のみで返してください。\n'
+  + '説明文・マークダウン・コードブロックは一切不要です。JSONだけ返してください。\n\n'
+  + '{\n'
+  + '  "date": "YYYY-MM-DD",\n'
+  + '  "store": "店舗名",\n'
+  + '  "amount": 税込合計金額(整数),\n'
+  + '  "tax": 消費税額(整数、不明なら0),\n'
+  + '  "items": "商品・品目の要約テキスト",\n'
+  + '  "category": "消耗品費 または 修繕費 または 旅費交通費 または 交際費 または 通信費 または 地代家賃 または 水道光熱費 または 広告宣伝費 または 外注費 または 給料手当 または 売上高 または 雑費",\n'
+  + '  "taxType": "課税 または 非課税 または 免税",\n'
+  + '  "invoiceNo": "T+13桁の番号 または 空文字",\n'
+  + '  "confidence": "高 または 中 または 低",\n'
+  + '  "memo": "特記事項があれば"\n'
+  + '}\n\n'
+  + 'amountは必ず整数の数値のみ。¥マーク・円・カンマは含めない。';
+
+  try {
+    var res = await fetch(EP, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Access-Key': KEY
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        model: 'gemini-2.5-flash',
+        useSearch: false,
+        mediaContents: [{ type: mime, base64: dataUrl }]
+      })
+    });
+
+    if(!res.ok){
+      var et = await res.text().catch(function(){return '';});
+      throw new Error('HTTP ' + res.status + ' / ' + et.slice(0,80));
+    }
+
+    var json = await res.json();
+
+    // Functionsのレスポンス形式(788.jpg 43-47行):
+    // { candidates:[{ content:{ parts:[{ text }] }, role:"model" }], finishReason:"STOP" }
+    var text =
+      json.candidates &&
+      json.candidates[0] &&
+      json.candidates[0].content &&
+      json.candidates[0].content.parts &&
+      json.candidates[0].content.parts[0] &&
+      json.candidates[0].content.parts[0].text
+      || json.text || json.result || '';
+
+    var parsed = parseJSON(text);
+    if(!parsed) throw new Error('JSON解析失敗: ' + text.slice(0,120));
+
+    parsed.amount = num(parsed.amount);
+    parsed.tax    = num(parsed.tax);
+
+    ov.style.display = 'none';
+    show(parsed);
+
+  } catch(err){
+    ov.style.display = 'none';
+    console.error('[gemini]', err);
+    toast('❌ ' + err.message, 'e');
+  }
+}
+
+// ─── JSON パース ───
+function parseJSON(txt){
+  try{
+    var c = txt.replace(/```json|```/g,'').trim();
+    var s = c.indexOf('{'), e = c.lastIndexOf('}');
+    if(s===-1||e===-1) return null;
+    return JSON.parse(c.slice(s, e+1));
+  }catch(ex){ return null; }
+}
+
+// ─── 数値変換 ───
+function num(v){
+  if(typeof v === 'number') return Math.round(v);
+  var s = String(v||0).replace(/[¥￥,，円\s]/g,'').replace(/[^0-9\-]/g,'');
+  var n = parseInt(s,10);
+  return isNaN(n) ? 0 : n;
+}
+
+// ─── 結果表示 ───
+function show(p){
+  cur.parsed = p;
+  var amt  = p.amount || 0;
+  var conf = p.confidence || '-';
+  var isNG = amt === 0;
+
+  var confEl = document.getElementById('conf');
+  confEl.textContent = conf;
+  confEl.style.color = conf==='高' ? '#12A05A' : conf==='中' ? '#E07020' : '#D32F2F';
+
+  document.getElementById('badge').textContent = isNG ? '⚠️ 金額要確認' : '✓ AI解析完了';
+  document.getElementById('badge').className   = 'badge' + (isNG ? ' warn' : '');
+  document.getElementById('result').className  = 'result show' + (isNG ? ' warn' : '');
+
+  var html =
+    row('日付',     p.date     || '-')
+  + row('店舗名',   p.store    || '-')
+  + '<span class="lbl">金額（税込）</span>'
+  + (isNG
+      ? '<span class="val amt ng">⚠️ 0円（手動欄で修正）</span>'
+      : '<span class="val amt">¥' + amt.toLocaleString() + '</span>')
+  + row('消費税',   '¥' + (p.tax||0).toLocaleString())
+  + row('品目',     p.items    || '-', 'text')
+  + '<span class="lbl">勘定科目</span><span class="val"><span class="val tag">' + (p.category||'雑費') + '</span></span>'
+  + row('課税区分', p.taxType  || '課税')
+  + (p.invoiceNo ? row('インボイス', p.invoiceNo) : '')
+  + (p.memo      ? row('備考', p.memo, 'text') : '');
+
+  document.getElementById('result-grid').innerHTML = html;
+
+  // 手動入力フォームにも反映
+  if(p.date)     document.getElementById('m-date').value   = p.date;
+  if(p.store)    document.getElementById('m-name').value   = p.store;
+  if(amt > 0)    document.getElementById('m-amount').value = amt;
+  if(p.category) document.getElementById('m-cat').value    = p.category;
+}
+
+function row(label, value, cls){
+  return '<span class="lbl">' + label + '</span><span class="val' + (cls?' '+cls:'') + '">' + value + '</span>';
+}
+
+// ─── 保存 ───
+function doSave(){
+  if(!cur || !cur.parsed) return;
+  var p = cur.parsed;
+  if(!p.amount){
+    if(!confirm('金額が0円です。このまま保存しますか？\n「キャンセル」→手動欄で金額を入力して保存できます。')) return;
+  }
+  add(p.date||toDay(), p.store||'不明', p.amount||0, p.tax||0, p.category||'雑費', p.taxType||'課税', p.invoiceNo||'', p.items||'');
+  toast('✅ 保存しました：' + (p.store||'') + ' ¥' + (p.amount||0).toLocaleString());
+  doReset();
+}
+
+function doManual(){
+  var date   = document.getElementById('m-date').value;
+  var store  = document.getElementById('m-name').value.trim();
+  var amount = num(document.getElementById('m-amount').value);
+  var cat    = document.getElementById('m-cat').value;
+  if(!date||!store||!amount||!cat){ toast('⚠️ 必須項目をすべて入力してください','w'); return; }
+  add(date, store, amount, Math.round(amount*10/110), cat, '課税', '', '');
+  document.getElementById('m-name').value   = '';
+  document.getElementById('m-amount').value = '';
+  toast('✅ 手動保存しました：' + store + ' ¥' + amount.toLocaleString());
+}
+
+function add(date, store, amount, tax, category, taxType, invoiceNo, items){
+  var isInc = ['売上高','受取利息'].includes(category);
+  entries.unshift({
+    id: Date.now(), date:date, store:store, amount:amount,
+    tax:tax, category:category, taxType:taxType,
+    invoiceNo:invoiceNo, items:items,
+    type: isInc ? 'income' : 'expense'
+  });
+  localStorage.setItem('rs2_entries', JSON.stringify(entries));
+  draw();
+}
+
+// ─── リスト描画 ───
+function draw(){
+  var inc = entries.filter(function(e){return e.type==='income'; }).reduce(function(s,e){return s+e.amount;},0);
+  var exp = entries.filter(function(e){return e.type==='expense';}).reduce(function(s,e){return s+e.amount;},0);
+
+  var tot = document.getElementById('totals');
+  tot.style.display = entries.length ? 'grid' : 'none';
+  document.getElementById('t-inc').textContent = '¥' + inc.toLocaleString();
+  document.getElementById('t-exp').textContent = '¥' + exp.toLocaleString();
+
+  var el = document.getElementById('list');
+  if(!entries.length){ el.innerHTML='<div class="empty">まだデータがありません</div>'; return; }
+  el.innerHTML = entries.slice(0,50).map(function(e){
+    var t = e.type==='income' ? 'i' : 'e';
+    var ic = e.type==='income' ? '💰' : '🧾';
+    var sg = e.type==='income' ? '+' : '-';
+    return '<div class="item">'
+      + '<div class="ic '+t+'">'+ic+'</div>'
+      + '<div class="info">'
+        + '<div class="name">'+e.store+'</div>'
+        + '<div class="meta">'+e.date+' · '+e.category+(e.items?' · '+e.items.slice(0,20):'')+'</div>'
+      + '</div>'
+      + '<div class="amt '+t+'">'+sg+'¥'+e.amount.toLocaleString()+'</div>'
+      + '<button class="del-btn" onclick="del('+e.id+')">×</button>'
+      + '</div>';
+  }).join('');
+}
+
+function del(id){
+  entries = entries.filter(function(e){return e.id!==id;});
+  localStorage.setItem('rs2_entries', JSON.stringify(entries));
+  draw();
+}
+
+function doReset(){
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('result').className = 'result';
+  document.getElementById('fin').value = '';
+  cur = null;
+}
+
+function doClear(){
+  if(!confirm('保存済みデータを全て削除しますか？')) return;
+  entries=[];
+  localStorage.removeItem('rs2_entries');
+  draw();
+  toast('🗑️ 全削除しました','w');
+}
+
+function doCSV(){
+  if(!entries.length){ toast('⚠️ データがありません','w'); return; }
+  var rows=[['日付','摘要','品目','勘定科目','種別','金額','消費税','課税区分','インボイス番号']];
+  entries.forEach(function(e){
+    rows.push([e.date,e.store,e.items||'',e.category,e.type==='income'?'収益':'費用',e.amount,e.tax||0,e.taxType||'課税',e.invoiceNo||'']);
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');
+  }).join('\n');
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
+  a.download = 'receipt_'+toDay()+'.csv';
+  a.click();
+  toast('📥 CSV出力しました');
+}
+
+function toast(msg, type){
+  var t = document.createElement('div');
+  t.className = 'toast';
+  t.style.background = type==='e' ? '#D32F2F' : type==='w' ? '#E07020' : '#12A05A';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();},2800);
+}
+</script>
+</body>
+</html>
